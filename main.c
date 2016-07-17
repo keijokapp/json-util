@@ -295,6 +295,7 @@ enum json_error json_parser_scan_array(const char** in, const char* end, struct 
 		error = json_parser_scan_value(in, end, &value);
 		if(error) goto error;
 		if(*in == tmp_pos) {
+			if(length == 0) break;
 			error = JSON_ERROR_UNEXPECTED_TOKEN;
 			goto error;
 		}
