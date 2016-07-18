@@ -753,6 +753,7 @@ void print_array(const struct json_array* array, unsigned int level) {
 	for(i = 0; i < array->length; i++) {
 		for(ii = 0; ii < level; ii++) printf("\t");
 		print_value(&array->values[i], level);
+		if(i+1 < array->length) printf(",");
 		printf("\n");
 	}
 
