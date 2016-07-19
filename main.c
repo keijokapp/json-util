@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 enum json_error {
 	JSON_ERROR_OK = 0,
@@ -713,7 +714,7 @@ void print_value(const struct json_value* value, unsigned int level) {
 
 void print_string(const struct json_string* string) {
 	struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
-	json_encode_string(string->content, string->length, &buffer);
+	json_encode_string((unsigned char*)string->content, string->length, &buffer);
 	printf("\"%.*s\"", (unsigned int)buffer.length, buffer.content);
 }
 
@@ -785,47 +786,29 @@ struct path {
 
 
 // FIXME: hacking with const
+int json_resolve_path(const struct json_value*, const struct path*, const struct json_value** out);
+struct json_value* json_object_resolve(const struct json_object*, const struct json_string*);
+int json_string_to_index(const struct json_string*, size_t*);
+void json_object_set(struct json_object*, const struct json_string*, const struct json_value*, struct json_value*);
+void json_array_set(struct json_array*, size_t, const struct json_value*, struct json_value*);
+void json_encode_string(const unsigned char*, size_t, struct buffer*);
+
+
 int json_resolve_path(const struct json_value* in, const struct path* path, const struct json_value** out) {
-	int i, ii;
+	int i;
 	for(i = 0; i < path->length; i++) {
 
 		const struct json_string* component = &path->components[i];
 
 		if(in->type == JSON_TYPE_OBJECT) {
-			const struct json_object* object = &in->value.object;
-			const struct json_value* property_value = NULL;
-			for(ii = 0; ii < object->length; ii++) {
-				if(component->length == object->keys[ii].length && strncmp(object->keys[ii].content, component->content, component->length) == 0) {
-					property_value = &object->values[ii];
-				}
-			}
-			
-			in = property_value;
-
+			in = json_object_resolve(&in->value.object, component);
 			if(in == NULL) break;
 		} else if(in->type == JSON_TYPE_ARRAY) {
 
 			// because I do not trust standard number parsers and my use case is simplistic anyway
 			size_t index = 0;
-			for(ii = 0; ii < component->length; ii++) {
-				if(component->content[ii] < '0' || component->content[ii] > '9') {
-					in = NULL;
-					goto out;
-				}
 
-				int n =	component->content[ii] - '0';
-
-				// overflow chack
-				if(index > SIZE_MAX / 10 || (index *= 10) > SIZE_MAX - n) {
-					fprintf(stderr, "Overflow\n");
-					in = NULL;
-					goto out;
-				}
-				
-				index += n;
-			}
-
-			if(index >= in->value.array.length) {
+			if(json_string_to_index(component, &index) || index >= in->value.array.length) {
 				in = NULL;
 				break;
 			}
@@ -837,29 +820,82 @@ int json_resolve_path(const struct json_value* in, const struct path* path, cons
 		}
 	}
 
- out:
-
 	*out = in;
 
 	return i;
 }
 
 
-void json_object_set(struct json_object* object, const struct json_string* key, const struct json_value* value) {
+struct json_value* json_object_resolve(const struct json_object* object, const struct json_string* key) {
+	struct json_value* property_value = NULL;
+	size_t ii;
+	for(ii = 0; ii < object->length; ii++) {
+		if(key->length == object->keys[ii].length && strncmp(object->keys[ii].content, key->content, key->length) == 0) {
+			property_value = &object->values[ii];
+		}
+	}
 
-	object->keys = realloc(object->keys, (object->length + 1) * sizeof(struct json_string));
-	object->values = realloc(object->keys, (object->length + 1) * sizeof(struct json_value));
+	return property_value;
+}
 
-	object->keys[object->length] = *key;
-	object->values[object->length] = *value;
 
-	object->length++;
+int json_string_to_index(const struct json_string* string, size_t* out) {
+	size_t index = 0;
+	size_t ii;
+	for(ii = 0; ii < string->length; ii++) {
+		char c = string->content[ii];
+		if(c < '0' || c > '9') {
+			return -1;
+		}
+
+		int n =	c - '0';
+
+		// overflow chack
+		if(index > SIZE_MAX / 10 || (index *= 10) > SIZE_MAX - n) {
+			fprintf(stderr, "Overflow\n");
+			return -1;
+		}
+
+		index += n;
+	}
+
+	*out = index;
+	return 0;
+}
+
+
+void json_object_set(struct json_object* object, const struct json_string* key, const struct json_value* value, struct json_value* old_value) {
+	struct json_value* v = json_object_resolve(object, key);
+	if(v) {
+		size_t index = v - object->values;
+		
+//		if(old_key) *old_key = object->keys[index];			// FIXME: key will be dangling
+		if(old_value) *old_value = object->values[index];
+
+		if(value->type == JSON_TYPE_UNDEFINED) {
+			object->length--;
+			memmove(&object->keys[index], &object->keys[index+1], (object->length - index) * sizeof(struct json_string));
+			memmove(&object->values[index], &object->values[index+1], (object->length - index) * sizeof(struct json_value));
+		} else {
+			object->keys[index] = *key;
+			object->values[index] = *value;
+		}
+	} else if(value->type != JSON_TYPE_UNDEFINED) {
+		object->keys = realloc(object->keys, (object->length + 1) * sizeof(struct json_string));
+		object->values = realloc(object->values, (object->length + 1) * sizeof(struct json_value));
+
+		object->keys[object->length] = *key;
+		object->values[object->length] = *value;
+
+		object->length++;
+		if(old_value) old_value->type = JSON_TYPE_UNDEFINED;
+	}
 }
 
 
 void json_array_set(struct json_array* array, size_t index, const struct json_value* value, struct json_value* old_value) {
 	if(index >= array->length) {
-		// fill cap
+		// fill gap
 		array->values = realloc(array->values, (index + 1) * sizeof(struct json_value));
 		int i;
 		for(i = array->length; i < index; i++) {
@@ -870,52 +906,11 @@ void json_array_set(struct json_array* array, size_t index, const struct json_va
 		if(old_value) old_value->type = JSON_TYPE_UNDEFINED;
 	} else {
 		if(old_value) *old_value = array->values[index];
-		array->length++;
 	}
 	array->values[index] = *value;
+	if(value->type == JSON_TYPE_UNDEFINED) array->values[index].type = JSON_TYPE_NULL;
 }
 
-
-void json_array_add(struct json_array* array, const struct json_value* value) {
-
-	array->values = realloc(array->values, (array->length + 1) * sizeof(struct json_value));
-
-	array->values[array->length] = *value;
-
-	array->length++;
-}
-
-
-void json_array_splice(struct json_array* array, size_t index, const struct json_value* value) {
-	if(index >= array->length) {
-		// fill cap
-		array->values = realloc(array->values, (index + 1) * sizeof(struct json_value));
-		int i;
-		for(i = array->length; i < index; i++) {
-			array->values[i].type = JSON_TYPE_NULL;
-		}
-		array->length = index + 1;
-	} else {	
-		array->values = realloc(array->values, (array->length + 1) * sizeof(struct json_value));
-		memmove(&array->values[index + 1], &array->values[index], (array->length - index) * sizeof(struct json_value));
-		array->length++;
-	}
-	array->values[index] = *value;
-}
-
-
-void json_array_slice(struct json_array* array, size_t index, struct json_value* old_value) {
-	if(index >= array->length) {
-		if(old_value) old_value->type = JSON_TYPE_UNDEFINED;
-		return;
-	}
-
-	if(old_value) *old_value = array->values[index];
-
-	memmove(&array->values[index], &array->values[index + 1], (array->length - index) * sizeof(struct json_value));
-	
-	array->length--;
-}
 
 void json_encode_string(const unsigned char* in, size_t length, struct buffer* out) {
 	struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
@@ -952,7 +947,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 		default:
 			// FIXME: this could be optimized/cleaned?
 			if(*in < 0x80) {
-				buffer_append(&buffer, in, 1);
+				buffer_append(&buffer, (const char*)in, 1);
 			} else {
 				if((*in >> 5) == 0x06) {
 					// 2-byte unicode
@@ -996,7 +991,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 				b[3] = (unicode_char & 0x0f00) >> 8;
 				b[4] = (unicode_char & 0x00f0) >> 4;
 				b[5] = (unicode_char & 0x000f) >> 0;
-				fprintf(stderr, "Unicode: %x%x%x%x\n", b[2], b[3], b[4], b[5]);
+//				fprintf(stderr, "Unicode: %x%x%x%x\n", b[2], b[3], b[4], b[5]);
 				b[2] += b[2] >= 0xa ? 'a' - 0xa : '0';
 				b[3] += b[3] >= 0xa ? 'a' - 0xa : '0';
 				b[4] += b[4] >= 0xa ? 'a' - 0xa : '0';
@@ -1027,8 +1022,6 @@ enum op {
 	OP_SET,
 	// add element to array
 	OP_SPLICE,
-	// remove elements from array,
-	OP_SLICE,
 	// decode JSON-encoded string string to UTF-8 encoded string
 	OP_DECODE_STRING,
 	// escape string characters
@@ -1151,8 +1144,7 @@ int main(int argc, const char* const* argv) {
 	else if(strcmp(argv[1], "type") == 0) op = OP_TYPE;
 	else if(strcmp(argv[1], "get") == 0) op = OP_GET;
 	else if(strcmp(argv[1], "set") == 0) op = OP_SET;
-//	else if(strcmp(argv[1], "splice") == 0) op = OP_SPLICE;
-//	else if(strcmp(argv[1], "slice") == 0) op = OP_SLICE;
+	else if(strcmp(argv[1], "splice") == 0) op = OP_SPLICE;
 	else if(strcmp(argv[1], "decode-string") == 0) op = OP_DECODE_STRING;
 	else if(strcmp(argv[1], "encode-string") == 0) op = OP_ENCODE_STRING;
 	else if(strcmp(argv[1], "encode-key") == 0) op = OP_ENCODE_KEY;
@@ -1163,7 +1155,7 @@ int main(int argc, const char* const* argv) {
 
 	// read stdin for these actions and parse as JSON if needed
 	if(op == OP_CHECK || op == OP_TYPE || op == OP_GET || // read operations
-	   op == OP_SET || op == OP_SPLICE || op == OP_SLICE || // write operation
+	   op == OP_SET || op == OP_SPLICE || // write operation
 	   op == OP_DECODE_STRING || op == OP_ENCODE_STRING /* || op == OP_ENCODE_KEY */ // utils
 	   ) {
 
@@ -1185,8 +1177,8 @@ int main(int argc, const char* const* argv) {
 
 	if(op == OP_CHECK) {
 		struct json_value* json_in;
-		size_t length = 0;
-	
+		size_t length = 2;
+
 		const char* start = stdin_buffer.content;
 		const char* end = start + stdin_buffer.length;
 		if(parse_input(&start, end, &json_in, &length) || length != 1) {
@@ -1265,6 +1257,7 @@ int main(int argc, const char* const* argv) {
 
 		struct path path;
 		struct json_value* json_in;
+		struct json_value* value;
 		size_t length = 2;
 
 		if(argc < 3) {
@@ -1278,19 +1271,107 @@ int main(int argc, const char* const* argv) {
 		}
 
 		const char* start = stdin_buffer.content;
-		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 2) {
+		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
 			fprintf(stderr, "%s: Invalid input\n", argv[0]);
 			exit(1);
 		}
 
-		struct json_value* resolved_value;
-		int r = json_resolve_path(json_in, &path, (const struct json_value**)&resolved_value); // FIXME: hacking with const?
+		if(length < 2) {
+			value = malloc(sizeof(struct json_value));
+			value->type = JSON_TYPE_UNDEFINED;
+		} else {
+			value = &json_in[1];
+		}
 
-		if(r == path.length) {
-			*resolved_value = json_in[1];
+		struct json_value* resolved_value;
+
+		path.length--;
+
+		if(json_resolve_path(json_in, &path, (const struct json_value**)&resolved_value) == path.length) {
+
+			if(resolved_value->type == JSON_TYPE_OBJECT) {
+				json_object_set(&resolved_value->value.object, &path.components[path.length], value, NULL);
+			}
+
+			if(resolved_value->type == JSON_TYPE_ARRAY) {
+				size_t index;
+				if(!json_string_to_index(&path.components[path.length], &index)) {
+					json_array_set(&resolved_value->value.array, index, value, NULL);
+				}
+			}
 		}
 
 		print_value(json_in, 0);
+	}
+
+
+	if(op == OP_SPLICE) {
+
+		struct json_value* json_in;
+		size_t length = 0;
+
+		size_t index = SIZE_MAX, count = 0;
+
+		errno = 0;
+		if(argc >= 3) {
+			const char* end = argv[2];
+			index = strtoumax(argv[2], (char**)&end, 0);
+			if(argv[2][0] == '-' || *end != '\0' || end == argv[2] || errno != 0) {
+				fprintf(stderr, "%s: Invalid index\n", argv[0]);
+				exit(1);
+			}
+		}
+
+		if(argc >= 4) {
+			const char* end = argv[3];
+			count = strtoumax(argv[3], (char**)&end, 0);
+			if(argv[3][0] == '-' || *end != '\0' || end == argv[3] || errno != 0) {
+				fprintf(stderr, "%s: Invalid element count\n", argv[0]);
+				exit(1);
+			}
+		}
+
+		const char* start = stdin_buffer.content;
+		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			exit(1);
+		}
+
+		if(json_in->type != JSON_TYPE_ARRAY) {
+			fprintf(stderr, "%s: Expected JSON array as input\n", argv[0]);
+			exit(1);
+		}
+
+		length--;
+
+		struct json_array* array = &json_in->value.array;
+
+		if(index >= array->length) {
+			count = 0;
+			index = array->length;
+		} else if(index + count >= array->length) {
+			count = array->length - index;
+		}
+
+		size_t new_size = array->length + length - count;
+		if(array->length < new_size) {
+			array->values = realloc(array->values, new_size * sizeof(struct json_value));
+		}
+
+		size_t shift_dst = index + length;
+		size_t shift_src = index + count;
+		if(shift_src != shift_dst) {
+			size_t shift_count = array->length - shift_src;
+			memmove(&array->values[shift_dst], &array->values[shift_src], shift_count * sizeof(struct json_value));
+		}
+
+		if(length) {
+			memcpy(&array->values[index], &json_in[1], length * sizeof(struct json_value));
+		}
+
+		array->length = new_size;
+
+		print_array(array, 0);
 	}
 
 
@@ -1315,7 +1396,7 @@ int main(int argc, const char* const* argv) {
 
 	if(op == OP_ENCODE_STRING) {
 		struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
-		json_encode_string(stdin_buffer.content, stdin_buffer.length, &buffer);
+		json_encode_string((unsigned char*)stdin_buffer.content, stdin_buffer.length, &buffer);
 
 		printf("%.*s", (unsigned int)buffer.length, buffer.content);
 	}

@@ -1,4 +1,4 @@
-Lightweight standalone CLI utility to read and manipulate JSON documents in semantically safe way.
+Lightweight standalone CLI utility to read and manipulate JSON documents in a semantically safe way.
 
 This is mainly meant for use in shell scripts. I'm also planning to write analogous tool for YAML but it wouldn't be as easy and I don't have too much time for this.
 
@@ -9,13 +9,9 @@ The tool is not tested for all possible cases but I try to keep it standard-comp
  * Tests tests tests ...
  * Flexible error & warning reporting
  * Unicode tests
- * Deleting object properties
- * Implement proper help and perhaps verbose mode
- * Implement `splice` action for adding elements to array
- * Implement `slice` action for removing elements from array
  * Implement `merge` action for merging two objects or arrays (according to [rfc7396](https://tools.ietf.org/html/rfc7396)?)
  * Add [rfc6901](https://tools.ietf.org/html/rfc6901) (JSON Pointers) support? (I found this RFC too late and don't really like that)
- * Configurable formatting and/or preserve whitespaces
+ * Configurable formatting and/or keeping whitespaces
 
 
 ## Compiling
@@ -31,10 +27,10 @@ gcc main.c -ojson-util
 ## Usage
 
 ```
-json-util ACTION [ARGUMENT]
+json-util ACTION [ARGUMENTS...]
 ```
 
-If action requires JSON input, it could be given through `stdin`. If multiple input values are needed (`set`, `splice` and `merge` actions),
+If action requires JSON input, it could be given via `stdin`. If multiple input values are needed (`set`, `splice` and `merge` actions),
 they could be concatenated with recommended whitespace between them (for numbers and literal values). In that
 case, if any value comes from untrusted source, it is recommended to pass the value through `check` action
 so it does not interfere with other values (unterminated objects, string, arrays, ...).
@@ -44,16 +40,19 @@ If action outputs JSON, it will be printed to `stdout` as raw JSON value. Object
 with tab as indentation character (for the sake of simplicity and because I like it that way) but that will probably change
 in the future. Duplicate keys are *not* removed.
 
+In case of invalid input (bad JSON, unexpected value type, bad argument, integer overflow), exit code will be `1`. Otherwise
+it will be `0` even if action fails for any other reason (e.g. unreferencabe/non-existent value).
+
 Example:
 ```
 $ printf '{"a":{"b":["c"]}} ignored text' | json-util get a.b.0
 "c"
 ```
 
-Currently only these actions are supported:
+Currently supported actions:
 
  * `check`
-
+ 
  Check that input contains 1 and exacltly 1 valid JSON value and nothing more. Prints `"ERROR"` to standard output
  if that is *not* the case, otherwise prints nothing. Exit code will be 0 in both cases.
 
@@ -69,11 +68,20 @@ Currently only these actions are supported:
 
  * `set` *`pathname`*
  
- Set JSON value at given path. Requires 2 JSON input values - first is the document to be modified and
- second is assigned value. If path cannot be resolved, document will be unmodified. If any object at path
+ Set JSON value at given path. Accepts 2 JSON input values - first is the document to be modified and
+ second (optional) is assigned value. If path cannot be resolved, document will be unmodified. If any object at path
  contains duplicate key, the *last* key/value will be used. Previous key/value pairs won't be affected.
  
- It's not currently possible to delete items. However, you can mark items as `null`.
+ If value pointed by path is an array and index is out of range, the gap will be filled with `null` values.
+ 
+ Property can be deleted by not giving the second value. In this case, if the value pointed by path is an array,
+ the behaviour will be the same as assigning `null` value. (Similar to Javascript)
+ 
+ * `splice` *`[index]`* *`[count]`*
+ 
+ Similar to Javascript `Array#splice` method. Accepts array as first input value and inserts other values at given `index`,
+ while removing up to `count` old element at given `index`. If `index` is not given or is out of range,
+ it will be set to the length of the array. If `count` is not given, it will be set to `0`.
 
  * `decode-string`
  
