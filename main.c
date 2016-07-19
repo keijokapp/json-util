@@ -69,15 +69,16 @@ struct json_value {
 };
 
 
-/****************************/
-/** Buffer implementation ***/
-/****************************/
+/***************************/
+/** Buffer implementation **/
+/***************************/
 
 
 struct buffer {
 	char* content;
 	unsigned int length, size;
 };
+
 
 void buffer_append(struct buffer* buffer, const char* content, unsigned int length) {
 	if(buffer->size < length + buffer->length) {
@@ -86,11 +87,12 @@ void buffer_append(struct buffer* buffer, const char* content, unsigned int leng
 		else
 			buffer->content = realloc(buffer->content, buffer->size *= 2);
 	}
-	
+
 	memcpy(buffer->content + buffer->length, content, length);
 
 	buffer->length += length;
 }
+
 
 void buffer_append_char(struct buffer* buffer, char content) {
 	buffer_append(buffer, &content, 1);
@@ -138,7 +140,7 @@ enum json_error json_parser_scan_whitespace(const char** in, const char* end, st
 enum json_error json_parser_scan_object(const char** in, const char* end, struct json_object* out) {
 
 	assert(*in < end);
-	
+
 	if(**in != '{') return JSON_ERROR_OK;
 
 	(*in)++;
@@ -180,11 +182,11 @@ enum json_error json_parser_scan_object(const char** in, const char* end, struct
 		if(**in != ':') {
 			error = JSON_ERROR_UNEXPECTED_TOKEN;
 			goto error;
-		}		
-		
+		}
+
 		(*in)++;
 		if(*in >= end) goto unexpected_end;
-		
+
 		json_parser_scan_whitespace(in, end, &whitespace);
 //		if(whitespace.length) {
 //			whitespace.length = 0;
@@ -224,12 +226,12 @@ enum json_error json_parser_scan_object(const char** in, const char* end, struct
 //		if(whitespace.length) {
 //			whitespace.length = 0;
 //		}
-		
+
 		if(*in >= end) goto unexpected_end;
 
 		if(**in != ',') break;
-		
-		(*in)++;		
+
+		(*in)++;
 	}
 
 	if(*in >= end) goto unexpected_end;
@@ -266,7 +268,7 @@ enum json_error json_parser_scan_object(const char** in, const char* end, struct
 enum json_error json_parser_scan_array(const char** in, const char* end, struct json_array* out) {
 
 	assert(*in < end);
-	
+
 	if(**in != '[') return JSON_ERROR_OK;
 
 	(*in)++;
@@ -320,12 +322,12 @@ enum json_error json_parser_scan_array(const char** in, const char* end, struct 
 //		if(whitespace.length) {
 //			whitespace.length = 0;
 //		}
-		
+
 		if(*in >= end) goto unexpected_end;
 
 		if(**in != ',') break;
-		
-		(*in)++;		
+
+		(*in)++;
 	}
 
 	if(*in >= end) goto unexpected_end;
@@ -336,7 +338,6 @@ enum json_error json_parser_scan_array(const char** in, const char* end, struct 
 	}
 
 	(*in)++;
-
 	out->values = values;
 	out->length = length;
 //	out->whitespaces = whitespaces;
@@ -368,32 +369,32 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 	enum json_error error = 0;
 
 	(*in)++;
-	
+
 	while(*in < end) {
-		
+
 		char c = **in;
-		
+
 		if(c == '"') break;
-		
+
 		if(c != '\\') {
-			
+
 			if(c <= 0x1f || c == 0x7f) { // disable control characters
 				error = JSON_ERROR_UNEXPECTED_TOKEN;
 				goto error;
 			}
 
 			buffer_append(&buffer, &c, 1);
-			
+
 		} else {
-			
+
 			(*in)++;
-			
+
 			if(*in >= end) goto unexpected_end;
-			
+
 			// early declaration
 			uint16_t unicode_char;
 			const char* uend = *in + 5;
-			
+
 			switch(**in) {
 			default:
 				error = JSON_ERROR_UNEXPECTED_TOKEN;
@@ -468,7 +469,7 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 			}
 			buffer_append(&buffer, &c, 1);
 		}
-		
+
 		(*in)++;
 	}
 
@@ -478,16 +479,16 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 		error = JSON_ERROR_UNEXPECTED_TOKEN;
 		goto error;
 	}
-	
+
 	(*in)++;
 
 	out->content = buffer.content;
 	out->length = buffer.length;
-	
+
 	return JSON_ERROR_OK;
 
  unexpected_end:
- 
+
  	error = JSON_ERROR_UNEXPECTED_END;
 
  error:
@@ -499,21 +500,21 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 
 
 enum json_error json_parser_scan_number(const char** in, const char* end, struct json_number* out) {
- 
+
 	assert(*in < end);
- 
+
 	if(**in != '-' && !(**in >= '0' && **in <= '9'))
 		return JSON_ERROR_OK;
- 
+
 	struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
- 
+
 	enum json_error error;
- 
+
 	if(**in == '-') {
 		buffer_append(&buffer, *in, 1);
- 		(*in)++;
- 	}
- 
+		(*in)++;
+	}
+
 	if(*in >= end) goto unexpected_end;
 
 	if(**in == '0') {
@@ -529,35 +530,36 @@ enum json_error json_parser_scan_number(const char** in, const char* end, struct
 		error = JSON_ERROR_UNEXPECTED_TOKEN;
 		goto error;
 	}
-	
+
 	if(*in < end && **in == '.') {
 
 		buffer_append(&buffer, *in ,1);
 		(*in)++;
 
 		if(*in >= end) goto unexpected_end;
-		
+
 		if(**in < '0' || **in > '9') {
 			error = JSON_ERROR_UNEXPECTED_TOKEN;
 			goto error;
 		}
-		
+
 		while(*in < end) {
 			if(**in < '0' || **in > '9') break;
 			buffer_append(&buffer, *in, 1);
 			(*in)++;
 		}
 	}
-	
+
 	if(*in < end && (**in == 'e' || **in == 'E')) {
-		
+
 		buffer_append(&buffer, *in, 1);
-		(*in)++;		
+		(*in)++;
 		if(*in >= end) goto unexpected_end;
 
 		if(**in == '+' || **in == '-') {
 			buffer_append(&buffer, *in, 1);
-			(*in)++;		
+			(*in)++;
+
 			if(*in >= end) goto unexpected_end;
 		}
 
@@ -565,7 +567,7 @@ enum json_error json_parser_scan_number(const char** in, const char* end, struct
 			error = JSON_ERROR_UNEXPECTED_TOKEN;
 			goto error;
 		}
-		
+
 		while(*in < end) {
 			if(**in < '0' || **in > '9') break;
 			buffer_append(&buffer, *in, 1);
@@ -575,11 +577,11 @@ enum json_error json_parser_scan_number(const char** in, const char* end, struct
 
 	out->content = buffer.content;
 	out->length = buffer.length;
-	
+
 	return JSON_ERROR_OK;
 
  unexpected_end:
-	
+
 	error = JSON_ERROR_UNEXPECTED_END;
 
  error:
@@ -618,18 +620,18 @@ enum json_error json_parser_scan_null(const char** in, const char* end) {
 
 
 enum json_error json_parser_scan_value(const char** in, const char* end, struct json_value* out) {
-	
+
 	assert(*in < end);
-	
+
 	const char* pos = *in;
 	enum json_error error;
-	
+
 	if(error = json_parser_scan_string(in, end, &out->value.string)) return error;
 	if(pos != *in) {
 		out->type = JSON_TYPE_STRING;
 		return JSON_ERROR_OK;
 	}
-	
+
 	if(error = json_parser_scan_number(in, end, &out->value.number)) return error;
 	if(pos != *in) {
 		out->type = JSON_TYPE_NUMBER;
@@ -659,7 +661,7 @@ enum json_error json_parser_scan_value(const char** in, const char* end, struct 
 		out->type = JSON_TYPE_NULL;
 		return JSON_ERROR_OK;
 	}
-	
+
 	return JSON_ERROR_OK;
 }
 
@@ -723,9 +725,9 @@ void print_number(const struct json_number* number) {
 
 void print_object(const struct json_object* object, unsigned int level) {
 	printf("{\n");
-	
+
 	level++;
-	
+
 	int i, ii;
 	for(i = 0; i < object->length; i++) {
 		for(ii = 0; ii < level; ii++) printf("\t");
@@ -737,16 +739,16 @@ void print_object(const struct json_object* object, unsigned int level) {
 	}
 
 	for(ii = 0; ii < level - 1; ii++) printf("\t");
-	
+
 	printf("}");
 }
 
 
 void print_array(const struct json_array* array, unsigned int level) {
 	printf("[\n");
-	
+
 	level++;
-	
+
 	int i, ii;
 	for(i = 0; i < array->length; i++) {
 		for(ii = 0; ii < level; ii++) printf("\t");
@@ -755,7 +757,7 @@ void print_array(const struct json_array* array, unsigned int level) {
 	}
 
 	for(ii = 0; ii < level - 1; ii++) printf("\t");
-	
+
 	printf("]");
 }
 
@@ -801,7 +803,7 @@ int json_resolve_path(const struct json_value* in, const struct path* path, cons
 
 			if(in == NULL) break;
 		} else if(in->type == JSON_TYPE_ARRAY) {
-		
+
 			// because I do not trust standard number parsers and my use case is simplistic anyway
 			size_t index = 0;
 			for(ii = 0; ii < component->length; ii++) {
@@ -855,7 +857,6 @@ void json_object_set(struct json_object* object, const struct json_string* key, 
 
 
 void json_array_set(struct json_array* array, size_t index, const struct json_value* value, struct json_value* old_value) {
-
 	if(index >= array->length) {
 		// fill cap
 		array->values = realloc(array->values, (index + 1) * sizeof(struct json_value));
@@ -866,7 +867,7 @@ void json_array_set(struct json_array* array, size_t index, const struct json_va
 		array->length = index + 1;
 
 		if(old_value) old_value->type = JSON_TYPE_UNDEFINED;
-	} else {	
+	} else {
 		if(old_value) *old_value = array->values[index];
 		array->length++;
 	}
@@ -915,13 +916,12 @@ void json_array_slice(struct json_array* array, size_t index, struct json_value*
 	array->length--;
 }
 
-
 void json_encode_string(const unsigned char* in, size_t length, struct buffer* out) {
 	struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
-	
+
 	uint16_t unicode_char = 0;
 	const unsigned char* end = in + length;
-	
+
 	while(in < end) {
 		switch(*in) {
 		case '"':
@@ -951,11 +951,11 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 		default:
 			// FIXME: this could be optimized/cleaned?
 			if(*in < 0x80) {
-				buffer_append(&buffer, in, 1);			
+				buffer_append(&buffer, in, 1);
 			} else {
 				if((*in >> 5) == 0x06) {
 					// 2-byte unicode
-				
+
 					fprintf(stderr, "2-byte unicode: %x", *in);
 
 					unicode_char = (*in & 0x1f) << 6;
@@ -978,7 +978,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 						fprintf(stderr, " %x", *in);
 						unicode_char |= (*in & 0x3f) << 6;
 					}
-				
+
 					if(in + 1 < end) {
 						in++;
 						fprintf(stderr, " %x", *in);
@@ -989,7 +989,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 					fprintf(stderr, "%x %x\n", *in, *(in + 1));
 					exit(1);
 				}
-			
+
 				char b[6] = "\\u";
 				b[2] = (unicode_char & 0xf000) >> 12;
 				b[3] = (unicode_char & 0x0f00) >> 8;
@@ -1001,7 +1001,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 				b[4] += b[4] >= 0xa ? 'a' - 0xa : '0';
 				b[5] += b[5] >= 0xa ? 'a' - 0xa : '0';
 				buffer_append(&buffer, b, 6);
-			}			
+			}
 		}
 		in++;
 	}
@@ -1020,7 +1020,7 @@ enum op {
 	OP_CHECK,
 	// print type name of input value
 	OP_TYPE,
-	// get element of array or property of object	
+	// get element of array or property of object
 	OP_GET,
 	// set element of array or property of object
 	OP_SET,
@@ -1048,7 +1048,7 @@ int parse_path(const char* in, struct path* path) {
 	struct json_string* components = malloc(1 * sizeof(struct json_string));
 	size_t components_size = 1;
 	size_t components_length = 0;
-	
+
 	struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
 
 	while(*in != '\0') {
@@ -1060,7 +1060,7 @@ int parse_path(const char* in, struct path* path) {
 			components[components_length].content = buffer.content;
 			components[components_length].length = buffer.length;
 			components_length++;
-			
+
 			buffer.content = NULL;
 			buffer.length = buffer.size = 0;
 		} else {
@@ -1084,10 +1084,10 @@ int parse_path(const char* in, struct path* path) {
 	path->components = components;
 	path->length = components_length + 1;
 
-	return 0;	
+	return 0;
 
  error:
- 
+
 	free(buffer.content);
 
 	while(components_length--) {
@@ -1096,7 +1096,7 @@ int parse_path(const char* in, struct path* path) {
 
 	free(components);
 
- 	return -1;
+	return -1;
 }
 
 
@@ -1106,17 +1106,17 @@ int parse_input(const char** start, const char* end, struct json_value** out, si
 	size_t max = *out_length ? *out_length : SIZE_MAX;
 
 	while(*start < end && max--) {
-			
+
 		json_parser_scan_whitespace(start, end, NULL);
-			
+
 		if(*start >= end) break;
-			
+
 		const char* tmp_pos = *start;
 		struct json_value value;
 		enum json_error error = json_parser_scan_value(start, end, &value);
 
 		if(error || *start == tmp_pos) goto error;
-				
+
 		if(length >= size) values = realloc(values, (size *= 2) * sizeof(struct json_value));
 		values[length++] = value;
 	}
@@ -1129,8 +1129,8 @@ int parse_input(const char** start, const char* end, struct json_value** out, si
  error:
 
 	free(values);
- 	
- 	return -1;
+
+	return -1;
 }
 
 
@@ -1169,10 +1169,10 @@ int main(int argc, const char* const* argv) {
 		int r;
 		while(r = read(0, stdin_buffer.content + stdin_buffer.length, stdin_buffer.size - stdin_buffer.length)) {
 			if(r < 0) {
-				fprintf(stderr, "%s: Error reading stdin: (%d) %s", argv[0], errno, strerror(errno));
+				fprintf(stderr, "%s: Error reading stdin: (%d) %s\n", argv[0], errno, strerror(errno));
 				exit(1);
 			}
-		
+
 			stdin_buffer.length += r;
 			if(stdin_buffer.length >= stdin_buffer.size)
 				stdin_buffer.content = realloc(stdin_buffer.content, stdin_buffer.size *= 2);
@@ -1197,13 +1197,13 @@ int main(int argc, const char* const* argv) {
 	if(op == OP_TYPE) {
 		struct json_value* json_in;
 		size_t length = 1;
-	
+
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
 			exit(1);
 		}
-	
+
 		switch(json_in->type) {
 		case JSON_TYPE_OBJECT:
 			printf("object");
@@ -1236,7 +1236,7 @@ int main(int argc, const char* const* argv) {
 		size_t length = 1;
 
 		if(argc < 3) {
-			fprintf(stderr, "%s: Missing path for action %s", argv[0], argv[1]);
+			fprintf(stderr, "Usage: %s %s pathname\n", argv[0], argv[1]);
 			exit(1);
 		}
 
@@ -1247,7 +1247,7 @@ int main(int argc, const char* const* argv) {
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
 			exit(1);
 		}
 
@@ -1267,7 +1267,7 @@ int main(int argc, const char* const* argv) {
 		size_t length = 2;
 
 		if(argc < 3) {
-			fprintf(stderr, "%s: Missing path for action %s", argv[0], argv[1]);
+			fprintf(stderr, "Usage: %s %s pathname\n", argv[0], argv[1]);
 			exit(1);
 		}
 
@@ -1278,7 +1278,7 @@ int main(int argc, const char* const* argv) {
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 2) {
-			fprintf(stderr, "%s: Invalid input", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
 			exit(1);
 		}
 
@@ -1288,21 +1288,21 @@ int main(int argc, const char* const* argv) {
 		if(r == path.length) {
 			*resolved_value = json_in[1];
 		}
-	
+
 		print_value(json_in, 0);
 	}
 
 
 	if(op == OP_DECODE_STRING) {
-		
+
 		struct json_value* json_in;
 		size_t length = 1;
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
 			exit(1);
 		}
-		
+
 		if(json_in->type != JSON_TYPE_STRING) {
 			fprintf(stderr, "%s: Expected JSON string as input\n", argv[0]);
 			exit(1);
@@ -1322,7 +1322,7 @@ int main(int argc, const char* const* argv) {
 
 	if(op == OP_ENCODE_KEY) {
 		if(argc < 3) {
-			fprintf(stderr, "%s: Missing argument action %s", argv[0], argv[1]);
+			fprintf(stderr, "Usage %s %s pathcomponent Missing argument action\n", argv[0], argv[1]);
 			exit(1);
 		}
 
@@ -1337,8 +1337,6 @@ int main(int argc, const char* const* argv) {
 		}
 		printf("%.*s", (unsigned int)buffer.length, buffer.content);
 	}
-	
+
 	return 0;
 }
-
-
