@@ -598,7 +598,7 @@ enum json_error json_parser_scan_boolean(const char** in, const char* end, struc
 		out->value = 1;
 		*in += 4;
 	} else if(*in + 5 <= end && s[0] == 'f' && s[1] == 'a' && s[2] == 'l' && s[3] == 's' && s[4] == 'e') {
-		out->value = 1;
+		out->value = 0;
 		*in += 5;
 	}
 	return JSON_ERROR_OK;
