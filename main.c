@@ -401,13 +401,9 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 				error = JSON_ERROR_UNEXPECTED_TOKEN;
 				goto error;
 			case '"':
-				c = '"';
-				break;
 			case '\\':
-				c = '\\';
-				break;
 			case '/':
-				c = '/';
+				c = **in;
 				break;
 			case 'b':
 				c = '\b';
@@ -425,8 +421,9 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 				c = '\t';
 				break;
 			case 'u':
-				(*in)++;
 				if(uend > end) goto unexpected_end;
+
+				(*in)++;
 
 				unicode_char = 0;
 
@@ -868,7 +865,7 @@ void json_object_set(struct json_object* object, const struct json_string* key, 
 	struct json_value* v = json_object_resolve(object, key);
 	if(v) {
 		size_t index = v - object->values;
-		
+
 //		if(old_key) *old_key = object->keys[index];			// FIXME: key will be dangling
 		if(old_value) *old_value = object->values[index];
 
@@ -952,37 +949,37 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 				if((*in >> 5) == 0x06) {
 					// 2-byte unicode
 
-					fprintf(stderr, "2-byte unicode: %x", *in);
+//					fprintf(stderr, "2-byte unicode: %x", *in);
 
 					unicode_char = (*in & 0x1f) << 6;
 
 					if(in + 1 < end) {
 						in++;
-						fprintf(stderr, " %x", *in);
+//						fprintf(stderr, " %x", *in);
 						unicode_char |= *in & 0x3f;
 					}
-					fprintf(stderr, "\n");
+//					fprintf(stderr, "\n");
 				} else if((*in >> 4) == 0x0e) {
 					// 3-byte unicode
 
-					fprintf(stderr, "3-byte unicode: %x", *in);
+//					fprintf(stderr, "3-byte unicode: %x", *in);
 
 					unicode_char = (*in & 0x0f) << 12;
 
 					if(in + 1 < end) {
 						in++;
-						fprintf(stderr, " %x", *in);
+//						fprintf(stderr, " %x", *in);
 						unicode_char |= (*in & 0x3f) << 6;
 					}
 
 					if(in + 1 < end) {
 						in++;
-						fprintf(stderr, " %x", *in);
+//						fprintf(stderr, " %x", *in);
 						unicode_char |= *in & 0x3f;
 					}
-					fprintf(stderr, "\n");
+//					fprintf(stderr, "\n");
 				} else {
-					fprintf(stderr, "%x %x\n", *in, *(in + 1));
+//					fprintf(stderr, "%x %x\n", *in, *(in + 1));
 					exit(1);
 				}
 
@@ -1170,8 +1167,6 @@ int main(int argc, const char* const* argv) {
 			if(stdin_buffer.length >= stdin_buffer.size)
 				stdin_buffer.content = realloc(stdin_buffer.content, stdin_buffer.size *= 2);
 		}
-
-//		fprintf(stderr, "Input (%d): %.*s\n", stdin_buffer.length, stdin_buffer.length, stdin_buffer.content);
 	}
 
 
