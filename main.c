@@ -1324,6 +1324,7 @@ int main(int argc, const char* const* argv) {
 		int i;
 		for(i = 0; i < object->length; i++) {
 			print_string(&object->keys[i]);
+			printf("\n");
 		}
 	}
 
