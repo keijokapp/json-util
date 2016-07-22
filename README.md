@@ -66,6 +66,11 @@ Currently supported actions:
  contains period (`.`) or backslash (`\`), they must be escaped with backslash(`\`). If any object at path
  contains duplicate key, the *last* key/value will be used. Output will be empty if path cannot be resolved.
 
+ * `keys`
+
+ Expects single JSON object as input and outputs list of keys in object, one per line, encoded as JSON string.
+ Keys are listed in same order they appear in input object. No deduplication is done.
+
  * `set` *`pathname`*
  
  Set JSON value at given path. Accepts 2 JSON input values - first is the document to be modified and

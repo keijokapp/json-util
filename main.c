@@ -1015,6 +1015,8 @@ enum op {
 	OP_TYPE,
 	// get element of array or property of object
 	OP_GET,
+	// get list of keys in object
+	OP_KEYS,
 	// set element of array or property of object
 	OP_SET,
 	// add element to array
@@ -1140,6 +1142,7 @@ int main(int argc, const char* const* argv) {
 	if(strcmp(argv[1], "check") == 0) op = OP_CHECK;
 	else if(strcmp(argv[1], "type") == 0) op = OP_TYPE;
 	else if(strcmp(argv[1], "get") == 0) op = OP_GET;
+	else if(strcmp(argv[1], "keys") == 0) op = OP_KEYS;
 	else if(strcmp(argv[1], "set") == 0) op = OP_SET;
 	else if(strcmp(argv[1], "splice") == 0) op = OP_SPLICE;
 	else if(strcmp(argv[1], "decode-string") == 0) op = OP_DECODE_STRING;
@@ -1151,7 +1154,7 @@ int main(int argc, const char* const* argv) {
 
 
 	// read stdin for these actions and parse as JSON if needed
-	if(op == OP_CHECK || op == OP_TYPE || op == OP_GET || // read operations
+	if(op == OP_CHECK || op == OP_TYPE || op == OP_GET || op == OP_KEYS || // read operations
 	   op == OP_SET || op == OP_SPLICE || // write operation
 	   op == OP_DECODE_STRING || op == OP_ENCODE_STRING /* || op == OP_ENCODE_KEY */ // utils
 	   ) {
@@ -1297,6 +1300,31 @@ int main(int argc, const char* const* argv) {
 		}
 
 		print_value(json_in, 0);
+	}
+
+
+	if(op == OP_KEYS) {
+
+		struct json_value* json_in;
+		size_t length = 1;
+
+		const char* start = stdin_buffer.content;
+		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
+			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			exit(1);
+		}
+
+		if(json_in->type != JSON_TYPE_OBJECT) {
+			fprintf(stderr, "%s: Expected JSON object as input\n", argv[0]);
+			exit(1);
+		}
+
+		struct json_object* object = &json_in->value.object;
+
+		int i;
+		for(i = 0; i < object->length; i++) {
+			print_string(&object->keys[i]);
+		}
 	}
 
 
