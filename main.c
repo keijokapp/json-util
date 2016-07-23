@@ -1011,6 +1011,8 @@ enum op {
 	OP_UNKNOWN,
 	// make sure that input contains 1 and only 1 valid JSON value
 	OP_CHECK,
+	// print input value at given position
+	OP_VALUE,
 	// print type name of input value
 	OP_TYPE,
 	// get element of array or property of object
@@ -1140,6 +1142,7 @@ int main(int argc, const char* const* argv) {
 
 
 	if(strcmp(argv[1], "check") == 0) op = OP_CHECK;
+	else if(strcmp(argv[1], "value") == 0) op = OP_VALUE;
 	else if(strcmp(argv[1], "type") == 0) op = OP_TYPE;
 	else if(strcmp(argv[1], "get") == 0) op = OP_GET;
 	else if(strcmp(argv[1], "keys") == 0) op = OP_KEYS;
@@ -1154,7 +1157,7 @@ int main(int argc, const char* const* argv) {
 
 
 	// read stdin for these actions and parse as JSON if needed
-	if(op == OP_CHECK || op == OP_TYPE || op == OP_GET || op == OP_KEYS || // read operations
+	if(op == OP_CHECK || op == OP_VALUE || op == OP_TYPE || op == OP_GET || op == OP_KEYS || // read operations
 	   op == OP_SET || op == OP_SPLICE || // write operation
 	   op == OP_DECODE_STRING || op == OP_ENCODE_STRING /* || op == OP_ENCODE_KEY */ // utils
 	   ) {
@@ -1181,6 +1184,28 @@ int main(int argc, const char* const* argv) {
 		const char* end = start + stdin_buffer.length;
 		if(parse_input(&start, end, &json_in, &length) || length != 1) {
 			printf("ERROR");
+		}
+	}
+
+
+	if(op == OP_VALUE) {
+		struct json_value* json_in;
+		size_t index = 0;
+
+		if(argc >= 3) {
+			const char* end = argv[2];
+			index = strtoumax(argv[2], (char**)&end, 0);
+			if(argv[2][0] == '-' || *end != '\0' || end == argv[2] || errno != 0) {
+				fprintf(stderr, "%s: Invalid index\n", argv[0]);
+				exit(1);
+			}
+		}
+
+		const char* start = stdin_buffer.content;
+		const char* end = start + stdin_buffer.length;
+		size_t length = index + 1;
+		if(!parse_input(&start, end, &json_in, &length) && index < length) {
+			print_value(&json_in[index], 0);
 		}
 	}
 

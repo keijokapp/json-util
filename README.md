@@ -30,7 +30,7 @@ gcc main.c -ojson-util
 json-util ACTION [ARGUMENTS...]
 ```
 
-If action requires JSON input, it could be given via `stdin`. If multiple input values are needed (`set`, `splice` and `merge` actions),
+If action requires JSON input, it could be given via `stdin`. If multiple input values are needed (e.g. `values`, `set` and `splice` actions),
 they could be concatenated with recommended whitespace between them (for numbers and literal values). In that
 case, if any value comes from untrusted source, it is recommended to pass the value through `check` action
 so it does not interfere with other values (unterminated objects, string, arrays, ...).
@@ -56,6 +56,10 @@ Currently supported actions:
  Check that input contains 1 and exacltly 1 valid JSON value and nothing more. Prints `"ERROR"` to standard output
  if that is *not* the case, otherwise prints nothing. Exit code will be 0 in both cases.
 
+ * `value` *`[index]`*
+ 
+ Outputs single input value at index `index` or `0` if `index` is not given. Outputs nothing if requested value cannot be read from input.
+
  * `type`
  
  Print type name (`object`, `array`, `string`, `number`, `boolean` or `null`) of input JSON value.
@@ -67,7 +71,7 @@ Currently supported actions:
  contains duplicate key, the *last* key/value will be used. Output will be empty if path cannot be resolved.
 
  * `keys`
-
+ 
  Expects single JSON object as input and outputs list of keys in object, one per line, encoded as JSON string.
  Keys are listed in same order they appear in input object. No deduplication is done.
 
