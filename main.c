@@ -923,9 +923,6 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 		case '\\':
 			buffer_append(&buffer, "\\\\", 2);
 			break;
-		case '/':
-			buffer_append(&buffer, "\\/", 2);
-			break;
 		case '\b':
 			buffer_append(&buffer, "\\b", 2);
 			break;
