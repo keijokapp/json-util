@@ -940,10 +940,13 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 			break;
 		default:
 			// FIXME: this could be optimized/cleaned?
-			if(*in < 0x80) {
+			if(*in >= 0x20 && *in < 0x7f) { // printable ASCII characters
 				buffer_append(&buffer, (const char*)in, 1);
 			} else {
-				if((*in >> 5) == 0x06) {
+
+				if(*in < 0x20 || *in == 0x7f) {
+					unicode_char = *in;
+				} else if((*in >> 5) == 0x06) { // starts with 110
 					// 2-byte unicode
 
 //					fprintf(stderr, "2-byte unicode: %x", *in);
@@ -956,7 +959,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 						unicode_char |= *in & 0x3f;
 					}
 //					fprintf(stderr, "\n");
-				} else if((*in >> 4) == 0x0e) {
+				} else if((*in >> 4) == 0x0e) { // starts with 1110
 					// 3-byte unicode
 
 //					fprintf(stderr, "3-byte unicode: %x", *in);
@@ -976,7 +979,7 @@ void json_encode_string(const unsigned char* in, size_t length, struct buffer* o
 					}
 //					fprintf(stderr, "\n");
 				} else {
-//					fprintf(stderr, "%x %x\n", *in, *(in + 1));
+					fprintf(stderr, "Unsupported unicode sequence starting with %x\n", *in);
 					exit(1);
 				}
 
