@@ -790,48 +790,43 @@ struct path {
 };
 
 
-// FIXME: hacking with const
-int json_resolve_path(const struct json_value*, const struct path*, const struct json_value** out);
-struct json_value* json_object_resolve(const struct json_object*, const struct json_string*);
+unsigned int json_resolve_path(struct json_value**, const struct path*);
+struct json_value* json_object_get(const struct json_object*, const struct json_string*);
 int json_string_to_index(const struct json_string*, size_t*);
 void json_object_set(struct json_object*, const struct json_string*, const struct json_value*, struct json_value*);
 void json_array_set(struct json_array*, size_t, const struct json_value*, struct json_value*);
 void json_encode_string(const unsigned char*, size_t, struct buffer*);
 
 
-int json_resolve_path(const struct json_value* in, const struct path* path, const struct json_value** out) {
+unsigned int json_resolve_path(struct json_value** value, const struct path* path) {
 	int i;
 	for(i = 0; i < path->length; i++) {
-
 		const struct json_string* component = &path->components[i];
 
-		if(in->type == JSON_TYPE_OBJECT) {
-			in = json_object_resolve(&in->value.object, component);
-			if(in == NULL) break;
-		} else if(in->type == JSON_TYPE_ARRAY) {
+		if((*value)->type == JSON_TYPE_OBJECT) {
+			struct json_value* v = json_object_get(&(*value)->value.object, component);
+			if(v == NULL) break;
+			(*value) = v;
+		} else if((*value)->type == JSON_TYPE_ARRAY) {
 
 			// because I do not trust standard number parsers and my use case is simplistic anyway
 			size_t index = 0;
 
-			if(json_string_to_index(component, &index) || index >= in->value.array.length) {
-				in = NULL;
+			if(json_string_to_index(component, &index) || index >= (*value)->value.array.length) {
 				break;
 			}
 
-			in = &in->value.array.values[index];
+			(*value) = &(*value)->value.array.values[index];
 		} else {
-			in = NULL;
 			break;
 		}
 	}
-
-	*out = in;
 
 	return i;
 }
 
 
-struct json_value* json_object_resolve(const struct json_object* object, const struct json_string* key) {
+struct json_value* json_object_get(const struct json_object* object, const struct json_string* key) {
 	struct json_value* property_value = NULL;
 	size_t ii;
 	for(ii = 0; ii < object->length; ii++) {
@@ -870,7 +865,7 @@ int json_string_to_index(const struct json_string* string, size_t* out) {
 
 
 void json_object_set(struct json_object* object, const struct json_string* key, const struct json_value* value, struct json_value* old_value) {
-	struct json_value* v = json_object_resolve(object, key);
+	struct json_value* v = json_object_get(object, key);
 	if(v) {
 		size_t index = v - object->values;
 
@@ -1039,6 +1034,11 @@ enum op {
 	OP_ENCODE_KEY,
 };
 
+enum flag {
+	FLAG_RECURSIVE = 1,
+	FLAG_FORCE = 2,
+};
+
 
 void print_usage(const char* program_name) {
 	// TODO: write comprehensive usage text
@@ -1137,30 +1137,51 @@ int parse_input(const char** start, const char* end, struct json_value** out, si
 }
 
 
-int main(int argc, const char* const* argv) {
+int main(int argc, char** argv) {
 
 	struct buffer stdin_buffer = { .content = malloc(4), .length = 0, .size = 4 };
 	enum op op = OP_UNKNOWN;
+	const char* programName = argv[0];
+	uint32_t flags = 0;
+
+	char c;
+	while((c = getopt(argc, argv, "fr")) != -1) {
+		switch(c) {
+		case 'r':
+			flags |= FLAG_RECURSIVE;
+			break;
+		case 'f':
+			flags |= FLAG_FORCE;
+			break;
+		default:
+			fprintf(stderr, "Invalid option -%c\n", c);
+			exit(1);
+		}
+	}
+
+	argv += optind;
+	argc -= optind;
 
 
-	if(argc < 2) {
-		print_usage(argv[0]);
+	if(argc < 1) {
+		print_usage(programName);
 		exit(1);
 	}
 
 
-	if(strcmp(argv[1], "check") == 0) op = OP_CHECK;
-	else if(strcmp(argv[1], "value") == 0) op = OP_VALUE;
-	else if(strcmp(argv[1], "type") == 0) op = OP_TYPE;
-	else if(strcmp(argv[1], "get") == 0) op = OP_GET;
-	else if(strcmp(argv[1], "keys") == 0) op = OP_KEYS;
-	else if(strcmp(argv[1], "set") == 0) op = OP_SET;
-	else if(strcmp(argv[1], "splice") == 0) op = OP_SPLICE;
-	else if(strcmp(argv[1], "decode-string") == 0) op = OP_DECODE_STRING;
-	else if(strcmp(argv[1], "encode-string") == 0) op = OP_ENCODE_STRING;
-	else if(strcmp(argv[1], "encode-key") == 0) op = OP_ENCODE_KEY;
+	if(strcmp(argv[0], "check") == 0) op = OP_CHECK;
+	else if(strcmp(argv[0], "value") == 0) op = OP_VALUE;
+	else if(strcmp(argv[0], "type") == 0) op = OP_TYPE;
+	else if(strcmp(argv[0], "get") == 0) op = OP_GET;
+	else if(strcmp(argv[0], "keys") == 0) op = OP_KEYS;
+	else if(strcmp(argv[0], "set") == 0) op = OP_SET;
+	else if(strcmp(argv[0], "splice") == 0) op = OP_SPLICE;
+	else if(strcmp(argv[0], "decode-string") == 0) op = OP_DECODE_STRING;
+	else if(strcmp(argv[0], "encode-string") == 0) op = OP_ENCODE_STRING;
+	else if(strcmp(argv[0], "encode-key") == 0) op = OP_ENCODE_KEY;
 	else {
-		fprintf(stderr, "%s: Invalid action %s\n", argv[0], argv[1]);
+		fprintf(stderr, "%s: Invalid action %s\n", programName, argv[0]);
+		exit(1);
 	}
 
 
@@ -1173,7 +1194,7 @@ int main(int argc, const char* const* argv) {
 		int r;
 		while(r = read(0, stdin_buffer.content + stdin_buffer.length, stdin_buffer.size - stdin_buffer.length)) {
 			if(r < 0) {
-				fprintf(stderr, "%s: Error reading stdin: (%d) %s\n", argv[0], errno, strerror(errno));
+				fprintf(stderr, "%s: Error reading stdin: (%d) %s\n", programName, errno, strerror(errno));
 				exit(1);
 			}
 
@@ -1224,7 +1245,7 @@ int main(int argc, const char* const* argv) {
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
@@ -1260,26 +1281,23 @@ int main(int argc, const char* const* argv) {
 		size_t length = 1;
 
 		if(argc < 3) {
-			fprintf(stderr, "Usage: %s %s pathname\n", argv[0], argv[1]);
+			fprintf(stderr, "Usage: %s %s pathname\n", programName, argv[0]);
 			exit(1);
 		}
 
-		if(parse_path(argv[2], &path)) {
-			fprintf(stderr, "%s: Invalid path %s for action %s\n", argv[0], argv[2], argv[1]);
+		if(parse_path(argv[1], &path)) {
+			fprintf(stderr, "%s: Invalid path %s for action %s\n", programName, argv[1], argv[0]);
 			exit(1);
 		}
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
-		const struct json_value* resolved_value;
-		int r = json_resolve_path(json_in, &path, &resolved_value);
-
-		if(r == path.length) {
-			print_value(resolved_value, 0);
+		if(json_resolve_path(&json_in, &path) == path.length) {
+			print_value(json_in, 0);
 		}
 	}
 
@@ -1291,48 +1309,103 @@ int main(int argc, const char* const* argv) {
 		struct json_value* value;
 		size_t length = 2;
 
-		if(argc < 3) {
-			fprintf(stderr, "Usage: %s %s pathname\n", argv[0], argv[1]);
+		if(argc < 2) {
+			fprintf(stderr, "Usage: %s %s pathname\n", programName, argv[0]);
 			exit(1);
 		}
 
-		if(parse_path(argv[2], &path)) {
-			fprintf(stderr, "%s: Invalid path %s for action %s\n", argv[0], argv[2], argv[1]);
+		if(parse_path(argv[1], &path)) {
+			fprintf(stderr, "%s: Invalid path %s for action %s\n", programName, argv[1], argv[0]);
 			exit(1);
 		}
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
+		struct json_value default_value = { .type = JSON_TYPE_UNDEFINED };
 		if(length < 2) {
-			value = malloc(sizeof(struct json_value));
-			value->type = JSON_TYPE_UNDEFINED;
+			value = &default_value;
 		} else {
 			value = &json_in[1];
 		}
 
-		struct json_value* resolved_value;
 
-		path.length--;
+//		path.length--;
 
-		if(json_resolve_path(json_in, &path, (const struct json_value**)&resolved_value) == path.length) {
+		struct json_value* resolved_value = json_in;
+//		unsigned int resolved_components = json_resolve_path(&resolved_value, &path);
 
+		int i;
+		const struct json_value* current_value = json_in;
+		for(i = 0; i < path.length; i++) {
+			size_t index = 0;
+			if(current_value->type == JSON_TYPE_ARRAY && !json_string_to_index(&path.components[resolved_components], &index)) {
+
+				if(index < current_value->value.array.length)	{
+					struct json_value* v = &current_value->value.array.values[index];
+					current_value = v;
+				} else if(flags & FLAG_RECURSIVE) {
+					struct json_value* new_value = malloc(sizeof(struct json_value));
+					new_value->type = JSON_TYPE_NULL; // placeholder for next iteration
+					json_array_set(&current_value->value.array, index, new_value, NULL);
+					current_value = &current_value->value.array.values[index];					
+				}
+				
+				if(i == path.length - 1) { // last component
+					json_array_set(&resolved_value->value.array, index, value, NULL);
+				} else if(flags & FLAG_RECURSIVE) {
+					
+					struct json_value* new_value = malloc(sizeof(struct json_value));
+					new_value->type = JSON_TYPE_OBJECT;
+					new_value->value.object.keys = NULL;
+					new_value->value.object.values = NULL;
+					new_value->value.object.length = 0;
+					json_array_set(&current_value->value.array, index, new_value, NULL);
+					current_value = &current_value->value.array.values[index];
+				}
+			} else if(resolved_value->type != JSON_TYPE_OBJECT) {
+				if(flags & FLAG_FORCE) {
+					resolved_value->type = JSON_TYPE_OBJECT;
+					resolved_value->value.object.keys = NULL;
+					resolved_value->value.object.values = NULL;
+					resolved_value->value.object.length = 0;
+				} else {
+					goto error; // FIXME: restructure
+				}
+			}
+			
+			if(flags & FLAG_RECURSIVE) {
+		
+			for(; resolved_components < path.length; resolved_components++) {
+				struct json_value* new_value = malloc(sizeof(struct json_value));
+				new_value->type = JSON_TYPE_OBJECT;
+				new_value->value.object.keys = NULL;
+				new_value->value.object.values = NULL;
+				new_value->value.object.length = 0;
+				json_object_set(&resolved_value->value.object, &path.components[resolved_components], new_value, NULL);
+				resolved_value = &resolved_value->value.object.values[resolved_value->value.object.length - 1]; // FIXME: values are always copied to the end but that might change
+			}
+		}
+
+		if(resolved_components == path.length) {
 			if(resolved_value->type == JSON_TYPE_OBJECT) {
-				json_object_set(&resolved_value->value.object, &path.components[path.length], value, NULL);
+				json_object_set(&resolved_value->value.object, &path.components[resolved_components], value, NULL);
 			}
 
 			if(resolved_value->type == JSON_TYPE_ARRAY) {
 				size_t index;
-				if(!json_string_to_index(&path.components[path.length], &index)) {
+				if(!json_string_to_index(&path.components[resolved_components], &index)) {
 					json_array_set(&resolved_value->value.array, index, value, NULL);
 				}
 			}
 		}
 
 		print_value(json_in, 0);
+
+	 error:
 	}
 
 
@@ -1343,12 +1416,12 @@ int main(int argc, const char* const* argv) {
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
 		if(json_in->type != JSON_TYPE_OBJECT) {
-			fprintf(stderr, "%s: Expected JSON object as input\n", argv[0]);
+			fprintf(stderr, "%s: Expected JSON object as input\n", programName);
 			exit(1);
 		}
 
@@ -1370,32 +1443,32 @@ int main(int argc, const char* const* argv) {
 		size_t index = SIZE_MAX, count = 0;
 
 		errno = 0;
-		if(argc >= 3) {
-			const char* end = argv[2];
-			index = strtoumax(argv[2], (char**)&end, 0);
-			if(argv[2][0] == '-' || *end != '\0' || end == argv[2] || errno != 0) {
-				fprintf(stderr, "%s: Invalid index\n", argv[0]);
+		if(argc >= 2) {
+			const char* end = argv[1];
+			index = strtoumax(argv[1], (char**)&end, 0);
+			if(argv[1][0] == '-' || *end != '\0' || end == argv[1] || errno != 0) {
+				fprintf(stderr, "%s: Invalid index\n", programName);
 				exit(1);
 			}
 		}
 
-		if(argc >= 4) {
+		if(argc >= 3) {
 			const char* end = argv[3];
 			count = strtoumax(argv[3], (char**)&end, 0);
 			if(argv[3][0] == '-' || *end != '\0' || end == argv[3] || errno != 0) {
-				fprintf(stderr, "%s: Invalid element count\n", argv[0]);
+				fprintf(stderr, "%s: Invalid element count\n", programName);
 				exit(1);
 			}
 		}
 
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
 		if(json_in->type != JSON_TYPE_ARRAY) {
-			fprintf(stderr, "%s: Expected JSON array as input\n", argv[0]);
+			fprintf(stderr, "%s: Expected JSON array as input\n", programName);
 			exit(1);
 		}
 
@@ -1438,12 +1511,12 @@ int main(int argc, const char* const* argv) {
 		size_t length = 1;
 		const char* start = stdin_buffer.content;
 		if(parse_input(&start, start + stdin_buffer.length, &json_in, &length) || length < 1) {
-			fprintf(stderr, "%s: Invalid input\n", argv[0]);
+			fprintf(stderr, "%s: Invalid input\n", programName);
 			exit(1);
 		}
 
 		if(json_in->type != JSON_TYPE_STRING) {
-			fprintf(stderr, "%s: Expected JSON string as input\n", argv[0]);
+			fprintf(stderr, "%s: Expected JSON string as input\n", programName);
 			exit(1);
 		}
 
@@ -1460,12 +1533,12 @@ int main(int argc, const char* const* argv) {
 
 
 	if(op == OP_ENCODE_KEY) {
-		if(argc < 3) {
-			fprintf(stderr, "Usage %s %s pathcomponent Missing argument action\n", argv[0], argv[1]);
+		if(argc < 2) {
+			fprintf(stderr, "Usage %s %s path-component\n", programName, programName);
 			exit(1);
 		}
 
-		const char* arg = argv[2];
+		const char* arg = argv[1];
 
 		struct buffer buffer = { .content = NULL, .length = 0, .size = 0 };
 		while(*arg != '\0') {
