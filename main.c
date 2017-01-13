@@ -82,11 +82,19 @@ struct buffer {
 
 
 void buffer_append(struct buffer* buffer, const char* content, unsigned int length) {
-	if(buffer->size < length + buffer->length) {
-		if(buffer->size == 0)
-			buffer->content = malloc(buffer->size = 4);
-		else
-			buffer->content = realloc(buffer->content, buffer->size *= 2);
+	unsigned int new_length = length + buffer->length;
+
+	if(buffer->size < new_length) {
+		if(buffer->size == 0) {
+			buffer->content = NULL;
+			buffer->size = 4;
+		}
+
+		while(buffer->size < new_length) {
+			buffer->size *= 2;
+		}
+
+		buffer->content = realloc(buffer->content, buffer->size);
 	}
 
 	memcpy(buffer->content + buffer->length, content, length);
