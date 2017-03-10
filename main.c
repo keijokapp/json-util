@@ -381,7 +381,7 @@ enum json_error json_parser_scan_string(const char** in, const char* end, struct
 
 	while(*in < end) {
 
-		char c = **in;
+		unsigned char c = **in;
 
 		if(c == '"') break;
 
